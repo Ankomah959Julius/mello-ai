@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mello AI Chat</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f0f2f5;
+      color: #111b21;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .chat-container {
+      width: 100%;
+      max-width: 600px;
+      height: 100vh;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    @media (min-height: 700px) {
+      .chat-container {
+        height: 85vh;
+        border-radius: 12px;
+      }
+    }
+    .chat-header {
+      padding: 16px 20px;
+      background-color: #008069;
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .chat-header span.status-dot {
+      width: 10px;
+      height: 10px;
+      background-color: #25d366;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .chat-messages {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background-color: #efeae2;
+    }
+    .message {
+      max-width: 75%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-wrap: break-word;
+      box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+      white-space: pre-wrap;
+    }
+    .message.user {
+      background-color: #d9fdd3;
+      align-self: flex-end;
+      border-top-right-radius: 0;
+    }
+    .message.assistant {
+      background-color: #ffffff;
+      align-self: flex-start;
+      border-top-left-radius: 0;
+    }
+    .message.loading {
+      color: #667781;
+      font-style: italic;
+    }
+    .chat-input-area {
+      padding: 12px 16px;
+      background-color: #f0f2f5;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .chat-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #d1d7db;
+      border-radius: 24px;
+      outline: none;
+      font-size: 14px;
+      background-color: #ffffff;
+    }
+    .chat-input:focus {
+      border-color: #008069;
+    }
+    .chat-input:disabled {
+      background-color: #f0f2f5;
+      cursor: not-allowed;
+    }
+    .send-button {
+      background-color: #008069;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s;
+    }
+    .send-button:hover:not(:disabled) {
+      background-color: #006d59;
+    }
+    .send-button:disabled {
+      background-color: #8696a0;
+      cursor: not-allowed;
+    }
+    .send-button svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <span class="status-dot"></span>
+      Mello AI Chat
+    </div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="message assistant">Hello! I am Mello AI. How can I help you today?</div>
+    </div>
+    <div class="chat-input-area">
+      <input type="text" id="messageInput" class="chat-input" placeholder="Type a message..." autocomplete="off">
+      <button id="sendButton" class="send-button" title="Send message">
+        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const chatMessages = document.getElementById('chatMessages');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
+
+    function appendMessage(text, sender, isLoading = false) {
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message', sender);
+      if (isLoading) {
+        messageDiv.classList.add('loading');
+        messageDiv.id = 'loadingMessage';
+      }
+      messageDiv.textContent = text;
+      chatMessages.appendChild(messageDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return messageDiv;
+    }
+
+    function removeLoadingMessage() {
+      const loadingEl = document.getElementById('loadingMessage');
+      if (loadingEl) {
+        loadingEl.remove();
+      }
+    }
+
+    function setUIEnabled(enabled) {
+      messageInput.disabled = !enabled;
+      sendButton.disabled = !enabled;
+      if (enabled) {
+        messageInput.focus();
+      }
+    }
+
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      if (!text) return;
+
+      messageInput.value = '';
+      appendMessage(text, 'user');
+      setUIEnabled(false);
+      appendMessage('Mello AI is thinking...', 'assistant', true);
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ message: text })
+        });
+
+        const data = await response.json();
+        removeLoadingMessage();
+
+        if (response.ok && data.reply) {
+          appendMessage(data.reply, 'assistant');
+        } else {
+          appendMessage(data.message || 'Error communicating with AI service.', 'assistant');
+        }
+      } catch (err) {
+        console.error('Network error:', err);
+        removeLoadingMessage();
+        appendMessage('Network error. Please check your connection and try again.', 'assistant');
+      } finally {
+        setUIEnabled(true);
+      }
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
