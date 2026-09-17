@@ -6,14 +6,18 @@ Safety and Policy Guidelines:
 - You must not provide professional medical, legal, or financial diagnosis/advice; instead, suggest consulting a qualified professional.
 - Maintain a helpful, respectful, and concise tone in all responses.`;
 
-export async function generateChatCompletion(userMessage) {
+export async function generateChatCompletion(history = [], userMessage) {
   const apiKey = config.ai.apiKey;
 
   if (!apiKey || apiKey === 'dummy_ai_api_key') {
-    return `[Mello AI (Simulated)] I received your message: "${userMessage}". (Note: Configure a valid AI_API_KEY in .env to connect to the live LLM provider).`;
+    const reply = `[Mello AI (Simulated)] I received your message: "${userMessage}". (Note: Configure a valid AI_API_KEY in .env to connect to the live LLM provider).`;
+    return {
+      reply,
+      tokensUsed: 0,
+      model: 'simulated',
+    };
   }
 
-  // Determine API base URL (support Groq if key starts with gsk_ or custom AI_BASE_URL)
   let baseUrl = process.env.AI_BASE_URL;
   if (!baseUrl) {
     if (apiKey.startsWith('gsk_')) {
@@ -28,6 +32,19 @@ export async function generateChatCompletion(userMessage) {
     model = apiKey.startsWith('gsk_') ? 'openai/gpt-oss-20b' : 'gpt-4o-mini';
   }
 
+  // Format history messages into OpenAI roles
+  const formattedMessages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+  ];
+
+  for (const h of history) {
+    // h has { sender, message } where sender is 'user', 'assistant', or 'system'
+    const role = h.sender === 'assistant' ? 'assistant' : 'user';
+    formattedMessages.push({ role, content: h.message });
+  }
+
+  formattedMessages.push({ role: 'user', content: userMessage });
+
   try {
     const response = await fetch(baseUrl, {
       method: 'POST',
@@ -37,10 +54,7 @@ export async function generateChatCompletion(userMessage) {
       },
       body: JSON.stringify({
         model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userMessage },
-        ],
+        messages: formattedMessages,
         temperature: 0.7,
       }),
     });
@@ -55,12 +69,17 @@ export async function generateChatCompletion(userMessage) {
 
     const data = await response.json();
     const reply = data.choices?.[0]?.message?.content;
+    const tokensUsed = data.usage?.total_tokens || 0;
 
     if (!reply) {
       throw new Error('Received empty response from AI provider.');
     }
 
-    return reply.trim();
+    return {
+      reply: reply.trim(),
+      tokensUsed,
+      model,
+    };
   } catch (error) {
     console.error('[AI_SERVICE_ERROR]', error.message);
     throw error;
